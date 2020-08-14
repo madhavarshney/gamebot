@@ -1,11 +1,17 @@
 import discord
 import random
 
-from gamelib import register
-from gamelib.utils import BotApp
+from gamelib import register, preferences
+from gamelib.utils import BaseBotApp, TurnMessage, GameConfigError
 
-@register(name='connect4')
-class GameConnect4(BotApp):
+GAME_NAME = 'connect4'
+PREFERENCES = {
+    'emoji': 'Game board emoji',
+    'color': 'Message embed color'
+}
+
+@register(name=GAME_NAME, prefs=PREFERENCES)
+class GameConnect4(BaseBotApp):
     BOARD_X = 7
     BOARD_Y = 6
     BUTTONS = {'1️⃣':0,'2️⃣':1,'3️⃣':2,'4️⃣':3,'5️⃣':4,'6️⃣':5,'7️⃣':6}
@@ -16,24 +22,35 @@ class GameConnect4(BotApp):
     PRIMARY_COLOR = (255,175,44)
     TERTIARY_COLOR = (84,174,239)
 
-    async def begin(self, bot, message, player1, player2):
-        self.bot = bot
-        self.channel = message.channel
-        self.primary = player1
-        self.tertiary = player2
-        self.board = [[None for _ in range(0,7)] for _ in range(0,6)]
-        self.current_player = random.choice([self.primary, self.tertiary]) if self.tertiary != self.bot.user else self.primary
+    def __init__(self, players):
+        if len(players) < 2:
+            raise GameConfigError("You didn't tell me who to play this game with!")
+
+        if len(players) > 2:
+            raise GameConfigError("That's too many people! This game can only be played with 2 people.")
+
+        super().__init__(GAME_NAME, players)
         self.has_buttons = False
         self.winner = None
 
+        self.primary = players[0]
+        self.tertiary = players[1]
+
+    async def begin(self, bot, message):
+        self.bot = bot
+        self.channel = message.channel
+        self.board = [[None for _ in range(0,7)] for _ in range(0,6)]
+        self.current_player = random.choice([self.primary, self.tertiary]) if self.tertiary != self.bot.user else self.primary
+
+        self.turn_message = TurnMessage(self.channel)
         self.message = await self.channel.send(f"{self.primary.name} started session between {self.primary.name} and {self.tertiary.name}")
 
         await self.render_message()
-        return [self.message]
+        self.register_message(self.message)
 
     async def end(self):
         await self.message.clear_reactions()
-        return [self.message]
+        self.unregister_message(self.message)
 
     async def notify(self, event, **data):
         if event == 'react':
@@ -43,12 +60,14 @@ class GameConnect4(BotApp):
             if reaction.message.id != self.message.id:
                 return
 
-            if not (self.is_player_current(user) and await self.play_move(reaction, user)):
-                await reaction.remove(user)
-            elif self.is_completed():
-                super().end_session(self.primary, self.tertiary)
-                # await sessions.remove_session(channel=message.channel, primary=session.primary, tertiary=session.tertiary)
+            if self.is_player_current(user):
+                col = self.BUTTONS[reaction.emoji]
+                await self.play_move(col, user)
 
+            await reaction.remove(user)
+
+            if self.is_completed():
+                self.end_session()
 
     def is_completed(self):
         return True if self.winner else False
@@ -76,10 +95,7 @@ class GameConnect4(BotApp):
 
         return False
 
-    async def play_move(self, reaction, user):
-        await self.message.remove_reaction(reaction, user)
-        col = self.BUTTONS[reaction.emoji]
-
+    async def play_move(self, col, user):
         ret_val = False
         for y in range(5,-1,-1):
             if not self.board[y][col]:
@@ -123,27 +139,27 @@ class GameConnect4(BotApp):
         await self.message.edit(content=f"{self.primary.mention} ⚔️ {self.tertiary.mention}", embed=container)
         await self.refresh_buttons()
 
+        if self.winner:
+            await self.turn_message.delete()
+        else:
+            self.turn_message.delay(f'{self.current_player.mention} It\'s your turn in connect 4!')
+
     def is_player_current(self, player):
         return self.current_player == player
 
     def get_container_color(self):
-        # db_primary = self.db.get_player(self.primary.id)
-        # db_tertiary = self.db.get_player(self.tertiary.id)
-        # primary_color = db_primary[2] if db_primary[2] else self.PRIMARY_COLOR
-        # tertiary_color = db_tertiary[2] if db_tertiary[2] else self.TERTIARY_COLOR
-        primary_color = self.PRIMARY_COLOR
-        tertiary_color = self.TERTIARY_COLOR
+        primary_color = self.preference(self.primary, 'color') or self.PRIMARY_COLOR
+        tertiary_color = self.preference(self.tertiary, 'color') or self.TERTIARY_COLOR
+
         return discord.Color.from_rgb(*primary_color) if \
             self.current_player == self.primary \
             else discord.Color.from_rgb(*tertiary_color)
 
     def get_player_emojis(self):
-        # db_primary = self.db.get_player(self.primary.id)
-        # db_tertiary = self.db.get_player(self.tertiary.id)
-        # primary_tile = db_primary[1] if db_primary[1] else self.PRIMARY_TILE
-        # tertiary_tile = db_tertiary[1] if db_tertiary[1] else self.TERTIARY_TILE
-        # return primary_tile, tertiary_tile
-        return self.PRIMARY_TILE, self.TERTIARY_TILE
+        primary_tile = self.preference(self.primary, 'emoji') or self.PRIMARY_TILE
+        tertiary_tile = self.preference(self.tertiary, 'emoji') or self.TERTIARY_TILE
+
+        return primary_tile, tertiary_tile
 
     def render_board(self):
         primary_tile, tertiary_tile = self.get_player_emojis()

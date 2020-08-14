@@ -4,16 +4,18 @@ import discord
 from discord.ext import commands
 
 from gamelib import registry, sessionManager, preferences
-from gamelib.utils import setupLogger
+from gamelib.utils import setupLogger, GameConfigError
 
 import games
+import settings
 
 PREFIX = 'g!'
 DISCORD_API_KEY = os.environ.get('DISCORD_API_KEY') \
                   or 'NzEzMjYxMzAwNjQxNDMxNjE0.XsdnvA.Pv14UxDnRbKK1pFcEwoDRbM5zBA'
 
-bot = commands.Bot(command_prefix=PREFIX)
 logger = setupLogger()
+bot = commands.Bot(command_prefix=PREFIX)
+bot.remove_command('help')
 
 
 @bot.event
@@ -21,67 +23,89 @@ async def on_ready():
     logger.info(f'Logged on as {bot.user.name}')
 
 
+@bot.command('help')
+async def help(ctx: commands.Context):
+    embed = (
+        discord.Embed(
+            title='Welcome to Game Bot',
+            url='https://github.com/madhavarshney',
+            description=settings.HELP_DESCRIPTION,
+            color=discord.Color.from_rgb(8,146,208)
+        )
+            .set_author(
+                name='madhavarshney',
+                icon_url=settings.MV_ICON,
+                url='https://github.com/madhavarshney'
+            )
+            .set_thumbnail(url=settings.GAME_IMG)
+            .set_footer(
+                text='Have any feedback? Let us know!',
+                icon_url=settings.BUG_EMOJI
+            )
+    )
+    await ctx.send(embed=embed)
+
+
 @bot.command('play', help='Play a game')
 async def play(ctx: commands.Context, game_name: str = ''):
     # Game name is not specified
     if not game_name:
-        return await ctx.send('Huh? You don\'t want to play any particular game?')
-
-    # Get the opponent
-    opponent = ctx.message.mentions and ctx.message.mentions[0]
-    if not opponent:
-        return await ctx.send(f"You didn't tell me who to play this game with!")
+        return await ctx.send(f"Usage: `g!play GAME [@opponent]`\nAvailable games are {', '.join(registry.all())}")
 
     # Make sure the game exists
-    if not registry.get(game_name):
-        return await ctx.send(f'I don\'t know what that game is!')
+    game_cls = registry.get(game_name)
+    if not game_cls:
+        return await ctx.send(f'I don\'t know what that game is! Use `g!play` to list available games.')
 
-    # Instantiate game
-    game = registry.get(game_name)()
-    success = sessionManager.add(ctx.message.author, opponent, game)
+    # Get the players
+    players: list = ctx.message.mentions or []
+    if ctx.author not in players:
+        players.insert(0, ctx.author)
+
+    # Formatted list of people
+    people = ' and '.join(map(lambda p: p.mention, players))
 
     # Check if session already existed
-    if not success:
-        return await ctx.send(f"Session already exists... `{PREFIX}resign` the game first!")
+    if sessionManager.get(players):
+        return await ctx.send(f'Game with {people} already exists... `{PREFIX}end` the game first!')
 
-    # Woohoo! let's get started
-    await ctx.send(f'Challenging {opponent.mention}...')
-    messages = await game.begin(bot, ctx.message, player1=ctx.author, player2=opponent)
+    # Instantiate game
+    try:
+        game = game_cls(players)
+    except GameConfigError as err:
+        return await ctx.send(f"Unable to start game: {err.message}")
 
-    # Register messages for event handling
-    for message in messages:
-        sessionManager.register_message(message, game)
+    # Woohoo! let's get going
+    sessionManager.add(players, game)
+    await game.begin(bot, ctx.message)
 
 
 @bot.command('end', help='End an ongoing game')
 async def end(ctx: commands.Context):
-    # Get the opponent
-    opponent = ctx.message.mentions and ctx.message.mentions[0]
-    if not opponent:
-        return await ctx.send(f"You didn't tell me which game to end!")
+    # Get the players
+    players: list = ctx.message.mentions or []
+    if ctx.author not in players:
+        players.insert(0, ctx.author)
+
+    # Formatted list of people
+    people = ' and '.join(map(lambda p: p.mention, players))
 
     # Find the session
-    game = sessionManager.pop(ctx.author, opponent)
+    game = sessionManager.pop(players)
     if not game:
-        return await ctx.send(f'No game found between {ctx.message.author.mention} and {opponent.mention}')
+        return await ctx.send(f'No game found with {people}')
 
     # End this for good
-    messages = await game.end()
-    await ctx.send(f'Resigned game with {opponent.mention}')
-
-    # Unregister messages for event handling
-    for message in messages:
-        sessionManager.unregister_message(message, game)
+    await game.end()
+    await ctx.send(f'Ended game with {people}')
 
 
 @bot.command('prefs', help='View game settings')
-async def prefs(ctx: commands.Context, app: str = None, key: str = None):
-    # Find the session
-    prefs = preferences.get(ctx.author)
-
+async def get_prefs(ctx: commands.Context, app: str = None, key: str = None):
     try:
         # Dump all user settings
         if not app:
+            prefs = preferences.get_all(ctx.author)
             msg = 'Your Preferences:\n'
             for app, settings in prefs.items():
                 if app != 'id':
@@ -93,34 +117,44 @@ async def prefs(ctx: commands.Context, app: str = None, key: str = None):
 
         # Make sure the game exists
         if app != 'global' and not registry.get(app):
-            return await ctx.send(f'I don\'t know what that app is!')
+            return await ctx.send(f'I\'m not sure what app or game that is!')
 
         # Dump all settings for specified app
         if not key:
+            prefs = preferences.get_all_for_app(ctx.author, app)
             msg = f"Your Preferences for **{app}**:\n"
-            for key, value in prefs[app].items():
+            for key, value in prefs.items():
                 msg += f'\n{key} = {value}'
             return await ctx.send(msg)
 
-        msg = f'{key} = {prefs[app][key]}'
+        msg = f'{key} = {preferences.get(ctx.author, app, key)}'
         await ctx.send(msg)
+
     except KeyError:
         await ctx.send('Whoops! It seems that a specified param does not exist in your settings... maybe you haven\'t customized that yet?\n*Or, my code threw a python KeyError for some odd reason...*')
 
 
 @bot.command('set', help='Customize game settings')
-async def prefs(ctx: commands.Context, app: str = None, key: str = None, value: str = None):
+async def set_prefs(ctx: commands.Context, app: str = None, key: str = None, value: str = None):
     # Check for app, or send usage
     if not app:
         return await ctx.send(f"Usage: `{PREFIX}set APP KEY VALUE` where APP is 'global' or a game name")
 
-    # Validate key and value exist
-    if not key or not value:
-        return await ctx.send(f'Key and value have to be specified')
-
     # Make sure the game exists
     if app != 'global' and not registry.get(app):
         return await ctx.send(f'I don\'t know what that app is!')
+
+    # Validate key and value exist
+    if not key:
+        return await ctx.send(f'Key has to be specified')
+
+    # Verify requested setting exists (can be customized)
+    if not preferences.exists(app, key):
+        return await ctx.send('That app / key combo cannot be customized! Are you sure that setting exists?')
+
+    # Validate key and value exist
+    if not value:
+        return await ctx.send(f'Value has to be specified')
 
     # Set the settings
     preferences.set(ctx.author, app, key, value)

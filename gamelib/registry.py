@@ -10,11 +10,5 @@ class Registry:
     def get(self, name):
         return self._registry.get(name)
 
-
-registry = Registry()
-
-
-def register(name):
-    def decorator(func):
-        registry.register(name, func)
-    return decorator
+    def all(self):
+        return self._registry.keys()

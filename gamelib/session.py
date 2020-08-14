@@ -8,26 +8,26 @@ class SessionManager:
         self._messages = dict()
 
 
-    def add(self, player1, player2, app):
-        if self.get(player1, player2):
+    def add(self, players, app):
+        if self.get(players):
             return False
 
-        sessionId = SessionManager.id(player1, player2)
+        sessionId = SessionManager.id(players)
         self._sessions[sessionId] = app
 
-        for player in [player1, player2]:
+        for player in players:
             self._players[player.id] = app
 
         return True
 
 
-    def pop(self, player1, player2):
+    def pop(self, players):
         try:
-            sessionId = SessionManager.id(player1, player2)
+            sessionId = SessionManager.id(players)
             app = self._sessions.pop(sessionId)
 
             if app:
-                for player in set([player1, player2]):
+                for player in set(players):
                     self._players.pop(player.id)
 
                 return app
@@ -37,9 +37,9 @@ class SessionManager:
             return None
 
 
-    def get(self, player1, player2):
+    def get(self, players):
         try:
-            sessionId = SessionManager.id(player1, player2)
+            sessionId = SessionManager.id(players)
             return self._sessions[sessionId]
         except KeyError:
             return None
@@ -56,7 +56,7 @@ class SessionManager:
         self._messages[message.id] = app
 
 
-    def unregister_message(self, message, app):
+    def unregister_message(self, message):
         try:
             self._messages.pop(message.id)
             return True
@@ -72,5 +72,5 @@ class SessionManager:
 
 
     @staticmethod
-    def id(player1, player2):
-        return frozenset([player1.id, player2.id])
+    def id(players):
+        return frozenset(map(lambda p: p.id, players))
