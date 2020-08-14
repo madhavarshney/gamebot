@@ -1,3 +1,17 @@
-*.sh
-*__pycache__
+# Python stuff
+__pycache__/
+.venv/
+.idea/
+.env
+.pytest_cache/
+
+# macOS junk
+*.DS_Store
+
+# Possible DB files
 *.sqlite3
+*.json
+
+# TODO: remove
+mad
+kishan

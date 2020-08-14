@@ -1,3 +1,2 @@
-from .connect4 import connect4
-from .waveRPG import waveRPG
-from .go import go
+from .g2048 import *
+from .gconnect4 import *

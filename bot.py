@@ -1,201 +1,148 @@
 import os
-import sys
-import random
-import asyncio
-import sqlite3
-import logging
-from collections import defaultdict
-
-from games import connect4, waveRPG, go
 
 import discord
-from faker import Faker
-from emoji import UNICODE_EMOJI
+from discord.ext import commands
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+from gamelib import registry, sessionManager, preferences
+from gamelib.utils import setupLogger
 
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO)
+import games
 
-formatter = logging.Formatter("%(asctime)s - %(message)s")
-handler.setFormatter(formatter)
+PREFIX = 'g!'
+DISCORD_API_KEY = os.environ.get('DISCORD_API_KEY') \
+                  or 'NzEzMjYxMzAwNjQxNDMxNjE0.XsdnvA.Pv14UxDnRbKK1pFcEwoDRbM5zBA'
 
-logger.addHandler(handler)
+bot = commands.Bot(command_prefix=PREFIX)
+logger = setupLogger()
 
-DISCORD_API_KEY = os.environ.get("DISCORD_API_KEY")
-client = discord.Client()
 
-class database():
-    def __init__(self):
-        self.conn = sqlite3.connect('db.sqlite3')
-        c = self.conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS players (
-                        id TEXT,
-                        emoji TEXT,
-                        color BLOB
-                    )''')
-
-        self.conn.commit()
-
-    def insert_bulk(self, players):
-        for player_id in players:
-            self.insert_player(player_id)
-    
-    def insert_player(self, player_id):
-        c = self.conn.cursor()
-        data = (str(player_id), None, None)
-        c.execute('INSERT INTO players VALUES(?, ?, ?) ON CONFLICT DO NOTHING', data)
-        self.conn.commit()
-
-    def remove_player(self, player_id):
-        c = self.conn.cursor()
-        data = (str(player_id),)
-        c.execute('REMOVE players where id=(?)', data)
-        self.conn.commit() 
-
-    def get_player(self, player_id):
-        c = self.conn.cursor()
-        data = (str(player_id),)
-        c.execute('SELECT * from players where id=?', data)
-        self.conn.commit()
-        return c.fetchone()
-
-    def update_player_emoji(self, player_id, emoji):
-        c = self.conn.cursor()
-        data = (emoji, str(player_id),)
-        c.execute('UPDATE players SET emoji=? where id=?', data)
-        self.conn.commit()
-
-    def update_player_color(self, player_id, color):
-        c = self.conn.cursor()
-        data = (color, str(player_id),)
-        c.execute('UPDATE players SET emoji=? where id=?', data)
-        self.conn.commit()
-
-db = database()
-
-class sessions():
-    def __init__(self):
-        self._sessions = {}
-        self._messages = {}
-        self._players = defaultdict(set)
-
-    async def add_session(self, channel, primary, tertiary, application):
-        session_id = sessions.generate_session_id(primary, tertiary)
-        if not self.get_session(session_id):
-            db.insert_bulk([primary.id, tertiary.id])
-            message = await channel.send(f"{primary.name} booting session between {primary.name} and {tertiary.name}...")
-            new_session = application(client=client, db=db,channel=channel, message=message, primary=primary, tertiary=tertiary)
-
-            sub_message = None
-            if hasattr(new_session, 'SUB_MESSAGE'):
-                sub_message = await channel.send(f"{new_session.SUB_MESSAGE}")
-                await new_session.initialize_sub_message(sub_message)
-
-            await new_session.render_message()
-
-            self._sessions[session_id] = new_session
-            self._players[primary.id].add(session_id)
-            self._players[tertiary.id].add(session_id)
-            self._messages[message.id] = session_id
-            if sub_message:
-                self._messages[sub_message.id] = session_id
-            return True
-        await channel.send(f"there is already a session between {primary.name} and {tertiary.name}")
-        return False
-
-    async def remove_session(self, channel, primary, tertiary):
-        session_id = sessions.generate_session_id(primary, tertiary)
-        if self.get_session(session_id):
-            del self._sessions[session_id]
-            self._players[primary.id].remove(session_id)
-            # congrats you played yourself
-            if primary.id != tertiary.id:
-                self._players[tertiary.id].remove(session_id)
-            await channel.send(f"{primary.name} ended session between {primary.name} and {tertiary.name}")
-            return True
-        await channel.send(f"no active session found between and {tertiary.name}")
-        return False
-
-    def get_session(self, session_id):
-        return self._sessions[session_id] if session_id in self._sessions else None
-
-    def get_session_by_message(self, message_id):
-        return self._sessions[self._messages[message_id]] \
-            if message_id in self._messages and self._messages[message_id] in self._sessions else None
-
-    def get_session_by_player(self, player_id):
-        return [self._sessions[session_id] for session_id in self._players[player_id] if session_id in self._sessions] if player_id in self._players else None
-
-    @staticmethod
-    def generate_session_id(primary, tertiary):
-        uuid = Faker()
-        seed = (primary.id,tertiary.id) if primary.id > tertiary.id else (tertiary.id,primary.id)
-        uuid.seed_instance(seed)
-        return uuid.uuid4()
-
-sessions = sessions()
-
-@client.event
+@bot.event
 async def on_ready():
-    logger.info(f'We have logged in as {client.user}')
+    logger.info(f'Logged on as {bot.user.name}')
 
-@client.event
-async def on_message(message):
-    if message.author == client.user:
+
+@bot.command('play', help='Play a game')
+async def play(ctx: commands.Context, game_name: str = ''):
+    # Game name is not specified
+    if not game_name:
+        return await ctx.send('Huh? You don\'t want to play any particular game?')
+
+    # Get the opponent
+    opponent = ctx.message.mentions and ctx.message.mentions[0]
+    if not opponent:
+        return await ctx.send(f"You didn't tell me who to play this game with!")
+
+    # Make sure the game exists
+    if not registry.get(game_name):
+        return await ctx.send(f'I don\'t know what that game is!')
+
+    # Instantiate game
+    game = registry.get(game_name)()
+    success = sessionManager.add(ctx.message.author, opponent, game)
+
+    # Check if session already existed
+    if not success:
+        return await ctx.send(f"Session already exists... `{PREFIX}resign` the game first!")
+
+    # Woohoo! let's get started
+    await ctx.send(f'Challenging {opponent.mention}...')
+    messages = await game.begin(bot, ctx.message, player1=ctx.author, player2=opponent)
+
+    # Register messages for event handling
+    for message in messages:
+        sessionManager.register_message(message, game)
+
+
+@bot.command('end', help='End an ongoing game')
+async def end(ctx: commands.Context):
+    # Get the opponent
+    opponent = ctx.message.mentions and ctx.message.mentions[0]
+    if not opponent:
+        return await ctx.send(f"You didn't tell me which game to end!")
+
+    # Find the session
+    game = sessionManager.pop(ctx.author, opponent)
+    if not game:
+        return await ctx.send(f'No game found between {ctx.message.author.mention} and {opponent.mention}')
+
+    # End this for good
+    messages = await game.end()
+    await ctx.send(f'Resigned game with {opponent.mention}')
+
+    # Unregister messages for event handling
+    for message in messages:
+        sessionManager.unregister_message(message, game)
+
+
+@bot.command('prefs', help='View game settings')
+async def prefs(ctx: commands.Context, app: str = None, key: str = None):
+    # Find the session
+    prefs = preferences.get(ctx.author)
+
+    try:
+        # Dump all user settings
+        if not app:
+            msg = 'Your Preferences:\n'
+            for app, settings in prefs.items():
+                if app != 'id':
+                    msg += f'\n**__{app}__**'
+                    for key, value in settings.items():
+                        msg += f'\n{key} = {value}'
+
+            return await ctx.send(msg)
+
+        # Make sure the game exists
+        if app != 'global' and not registry.get(app):
+            return await ctx.send(f'I don\'t know what that app is!')
+
+        # Dump all settings for specified app
+        if not key:
+            msg = f"Your Preferences for **{app}**:\n"
+            for key, value in prefs[app].items():
+                msg += f'\n{key} = {value}'
+            return await ctx.send(msg)
+
+        msg = f'{key} = {prefs[app][key]}'
+        await ctx.send(msg)
+    except KeyError:
+        await ctx.send('Whoops! It seems that a specified param does not exist in your settings... maybe you haven\'t customized that yet?\n*Or, my code threw a python KeyError for some odd reason...*')
+
+
+@bot.command('set', help='Customize game settings')
+async def prefs(ctx: commands.Context, app: str = None, key: str = None, value: str = None):
+    # Check for app, or send usage
+    if not app:
+        return await ctx.send(f"Usage: `{PREFIX}set APP KEY VALUE` where APP is 'global' or a game name")
+
+    # Validate key and value exist
+    if not key or not value:
+        return await ctx.send(f'Key and value have to be specified')
+
+    # Make sure the game exists
+    if app != 'global' and not registry.get(app):
+        return await ctx.send(f'I don\'t know what that app is!')
+
+    # Set the settings
+    preferences.set(ctx.author, app, key, value)
+    return await ctx.send(f'{key} = {value}')
+
+
+@bot.event
+async def on_reaction_add(reaction: discord.Reaction, user):
+    # Skip self-reactions
+    if user == bot.user:
         return
 
-    if message.content == '' and message.mentions and message.mentions[0]:
-        await message.channel.send('beep boop... human wtf why did you turn me on')
+    # Notify app about reaction
+    app = sessionManager.get_player_session(user)
+    # app = sessionManager.get_message_session(reaction.message)
+    if app:
+        await app.notify('react', reaction=reaction, user=user)
 
-    if message.content.startswith('$connect4') or message.content.startswith('$c4'):
-        if message.mentions and message.mentions[0]:
-            await sessions.add_session(channel=message.channel, primary=message.author, tertiary=message.mentions[0], application=connect4)
-        else:
-            await message.channel.send(f"you need to mention someone to challenge them to a match")
 
-    if message.content.startswith('$wave') or message.content.startswith('$w') or message.content.startswith('$rpg'):
-        await sessions.add_session(channel=message.channel, primary=message.author, tertiary=client.user, application=waveRPG)
+if not DISCORD_API_KEY:
+    logger.error("ERROR: Set the env variable 'DISCORD_API_KEY'")
+    exit(1)
 
-    if message.content.startswith('$go') or message.content.startswith('$g'):
-        if message.mentions and message.mentions[0]:
-            await sessions.add_session(channel=message.channel, primary=message.author, tertiary=message.mentions[0], application=go)
-        else:
-            await message.channel.send(f"you need to mention someone to challenge them to a match")
-    
-    if message.content.startswith('$resign') or message.content.startswith('$r'):
-        if message.mentions and message.mentions[0]:
-            await sessions.remove_session(channel=message.channel, primary=message.author, tertiary=message.mentions[0])
-        else:
-            await message.channel.send(f"you need to mention someone to resign from a match")
 
-    if message.content.startswith('$emoji') or message.content.startswith('$e'):
-        emoji = message.content.split('$emoji ')
-        if len(emoji) != 2 or emoji[1] not in UNICODE_EMOJI:
-            await message.channel.send(f"invalid emoji")
-            return
-        emoji = emoji[1]
-
-        db.insert_player(message.author.id)
-        db.update_player_emoji(message.author.id, emoji)
-        games = sessions.get_session_by_player(message.author.id)
-        if games:
-            for board in games:
-                await board.render_message()
-
-@client.event
-async def on_raw_reaction_add(payload):
-    if payload.member == client.user:
-        return
-
-    channel = await client.fetch_channel(payload.channel_id)
-    message = await channel.fetch_message(payload.message_id)
-    session = sessions.get_session_by_message(payload.message_id)
-    if session and session.is_player_current(payload.member):
-        if not await session.play_move(payload):
-            await message.remove_reaction(payload.emoji, payload.member)
-    elif session and session.is_completed():
-        await sessions.remove_session(channel=message.channel, primary=session.primary, tertiary=session.tertiary)
-
-client.run(DISCORD_API_KEY)
+bot.run(DISCORD_API_KEY)
