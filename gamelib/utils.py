@@ -9,6 +9,7 @@ from discord.errors import NotFound
 from . import sessionManager, preferences
 
 loop = asyncio.get_event_loop()
+
 def debounce(wait):
     """ Decorator that will postpone a functions
         execution until after wait seconds
@@ -75,46 +76,53 @@ class BaseBotApp(metaclass=ABCMeta):
         return sessionManager.unregister_message(message)
 
 
-class TurnMessage:
+class MagicMessage:
     def __init__(self, channel):
         self.channel = channel
         self.message = None
-        self.last_text = ''
+        self.ended = False
 
     async def send(self, text):
-        if text != self.last_text:
-            await self.delete()
+        if not self.message:
+            return await self._send(text)
 
-            self.last_text = text
-            self.message = await self.channel.send(text)
+        try:
+            await self._edit(text)
+        except NotFound:
+            return await self._send(text)
 
-    @debounce(5)
-    async def delay(self, text):
-        await self.send(text)
+        # Delete & resend message after a certain delay
+        self._resend(text)
 
     async def cleanup(self):
-        await self.delete()
-        self.abort()
+        self.ended = True
 
-    async def edit(self, text):
-        if self.message:
-            try:
-                await self.message.edit(content=text)
-            except NotFound:
-                pass
+        await self._delete()
+        self._cancel()
 
-    async def delete(self):
+    @debounce(5)
+    async def _resend(self, text):
+        if not self.ended:
+            await self._delete()
+            await self._send(text)
+
+    async def _send(self, text):
+        self.message = await self.channel.send(text)
+
+    async def _edit(self, text):
+        await self.message.edit(content=text)
+
+    async def _delete(self):
         if self.message:
             try:
                 await self.message.delete()
             except NotFound:
                 pass
 
-    def abort(self):
+    def _cancel(self):
         try:
             self.delay.t.cancel()
         except AttributeError:
-            print('err')
             pass
 
 

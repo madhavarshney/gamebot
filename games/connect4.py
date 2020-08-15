@@ -2,7 +2,7 @@ import discord
 import random
 
 from gamelib import register, preferences
-from gamelib.utils import BaseBotApp, TurnMessage, GameConfigError
+from gamelib.utils import BaseBotApp, MagicMessage, GameConfigError
 
 GAME_NAME = 'connect4'
 PREFERENCES = {
@@ -47,7 +47,7 @@ class GameConnect4(BaseBotApp):
         else:
             self.current_player = self.primary
 
-        self.turn_message = TurnMessage(self.channel)
+        self.turn_message = MagicMessage(self.channel)
         self.message = await self.channel.send(f'{self.primary.name} started session between {self.primary.name} and {self.tertiary.name}')
 
         await self.render_message()
@@ -70,6 +70,7 @@ class GameConnect4(BaseBotApp):
                 await self.play_move(col, user)
 
             if self.is_completed():
+                await self.end()
                 self.end_session()
 
         elif event == 'preference_change':
@@ -146,7 +147,7 @@ class GameConnect4(BaseBotApp):
         await self.refresh_buttons()
 
         if not self.winner:
-            self.turn_message.delay(f'{self.current_player.mention} It\'s your turn in connect 4!')
+            await self.turn_message.send(f'{self.current_player.mention} It\'s your turn in connect 4!')
 
     def is_player_current(self, player):
         return self.current_player == player

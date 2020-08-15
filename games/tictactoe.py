@@ -4,7 +4,7 @@ import itertools
 import discord
 
 from gamelib import register
-from gamelib.utils import BaseBotApp, GameConfigError, TurnMessage
+from gamelib.utils import BaseBotApp, GameConfigError, MagicMessage
 
 from settings import Z
 
@@ -51,7 +51,7 @@ class TicTacToe(BaseBotApp):
         self.winner = None
 
     async def begin(self):
-        self.turn_message = TurnMessage(self.channel)
+        self.turn_message = MagicMessage(self.channel)
 
         await self.update_message()
         await self.add_controls()
@@ -138,8 +138,7 @@ class TicTacToe(BaseBotApp):
         self.board_msg = await self.channel.send(**self.render())
 
     async def update_turn_message(self):
-        await self.turn_message.edit('...')
-        self.turn_message.delay(f'{self.current_player.mention} it is your turn in Tic-Tac-Toe!')
+        await self.turn_message.send(f'{self.current_player.mention} it is your turn in Tic-Tac-Toe!')
 
     def render(self):
         board_str = ''
