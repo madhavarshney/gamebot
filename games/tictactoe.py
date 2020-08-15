@@ -53,12 +53,12 @@ class TicTacToe(BaseBotApp):
     async def begin(self):
         self.turn_message = MagicMessage(self.channel)
 
+        if self.current_player.id == self.bot.user.id:
+            await self.play_bot_move()
+
         await self.update_message()
         await self.add_controls()
         await self.update_turn_message()
-
-        if self.current_player.id == self.bot.user.id:
-            await self.play_bot_move()
 
         self.register_message(self.board_msg)
 
@@ -170,7 +170,7 @@ class TicTacToe(BaseBotApp):
             # [x] @player
             board_str += f'{self.emojis[player]} {player.mention}'
             # Check winner
-            if self.winner and self.winner.id == player.id:
+            if self.winner and self.winner != 'TIE' and self.winner.id == player.id:
                 board_str += ' **has won**!'
             board_str += '\n\n'
 
