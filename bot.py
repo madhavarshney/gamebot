@@ -1,7 +1,6 @@
-import atexit
 import asyncio
+import signal
 import os
-import sys
 
 import discord
 from discord.ext import commands
@@ -15,8 +14,15 @@ import settings
 PREFIX = 'g!'
 DISCORD_API_KEY = os.environ.get('DISCORD_API_KEY')
 
+
+class ModdedBot(commands.Bot):
+    async def close(self, *args, **kwargs):
+        await sessionManager.killall()
+        await super().close(*args, **kwargs)
+
+
 logger = setupLogger()
-bot = commands.Bot(command_prefix=PREFIX)
+bot = ModdedBot(command_prefix=PREFIX)
 bot.remove_command('help')
 
 
@@ -181,22 +187,21 @@ if not DISCORD_API_KEY:
     exit(1)
 
 
-bot.run(DISCORD_API_KEY)
+loop = asyncio.get_event_loop()
+raised = False
 
-# try:
-#     bot.loop.run_until_complete(bot.start(DISCORD_API_KEY))
-# # except KeyboardInterrupt:
-# #     'pass'
-# finally:
-#     # if sys.exc_info() != (None, None, None):
-#     #     bot.loop.run_until_complete(sessionManager.killall())
-#     bot.loop.run_until_complete(sessionManager.killall())
-#     bot.loop.close()
+def raise_only_once(signum, frame):
+    global raised
 
+    if not raised:
+        raised = True
+        raise KeyboardInterrupt
 
-# @atexit.register
-# def exit_handler():
-#     logger.info('tasf')
-#     asyncio.run(sessionManager.killall())
-    # loop = asyncio.get_event_loop()
-    # loop.run_until_complete(sessionManager.killall())
+signal.signal(signal.SIGINT, raise_only_once)
+
+try:
+    loop.run_until_complete(bot.start(DISCORD_API_KEY))
+except KeyboardInterrupt:
+    loop.run_until_complete(bot.close())
+finally:
+    loop.close()
