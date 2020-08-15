@@ -11,7 +11,3 @@ __pycache__/
 # Possible DB files
 *.sqlite3
 *.json
-
-# TODO: remove
-mad
-kishan
