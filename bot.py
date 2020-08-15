@@ -1,4 +1,7 @@
+import atexit
+import asyncio
 import os
+import sys
 
 import discord
 from discord.ext import commands
@@ -73,7 +76,7 @@ async def play(ctx: commands.Context, game_name: str = ''):
     try:
         game = game_cls(players)
     except GameConfigError as err:
-        return await ctx.send(f"Unable to start game: {err.message}")
+        return await ctx.send(f"Whoops: {err.message}")
 
     # Woohoo! let's get going
     sessionManager.add(players, game)
@@ -168,10 +171,10 @@ async def on_reaction_add(reaction: discord.Reaction, user):
         return
 
     # Notify app about reaction
-    app = sessionManager.get_player_session(user)
-    # app = sessionManager.get_message_session(reaction.message)
+    # app = sessionManager.get_player_session(user)
+    app = sessionManager.get_message_session(reaction.message)
     if app:
-        await app.notify('react', reaction=reaction, user=user)
+        await app.handle('reaction', reaction=reaction, user=user)
 
 
 if not DISCORD_API_KEY:
@@ -180,3 +183,21 @@ if not DISCORD_API_KEY:
 
 
 bot.run(DISCORD_API_KEY)
+
+# try:
+#     bot.loop.run_until_complete(bot.start(DISCORD_API_KEY))
+# # except KeyboardInterrupt:
+# #     'pass'
+# finally:
+#     # if sys.exc_info() != (None, None, None):
+#     #     bot.loop.run_until_complete(sessionManager.killall())
+#     bot.loop.run_until_complete(sessionManager.killall())
+#     bot.loop.close()
+
+
+# @atexit.register
+# def exit_handler():
+#     logger.info('tasf')
+#     asyncio.run(sessionManager.killall())
+    # loop = asyncio.get_event_loop()
+    # loop.run_until_complete(sessionManager.killall())

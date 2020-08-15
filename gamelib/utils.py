@@ -4,6 +4,8 @@ import asyncio
 
 from abc import abstractmethod, ABC, ABCMeta
 
+from discord.errors import NotFound
+
 from . import sessionManager, preferences
 
 loop = asyncio.get_event_loop()
@@ -17,7 +19,7 @@ def debounce(wait):
                 asyncio.create_task(fn(*args, **kwargs))
             try:
                 debounced.t.cancel()
-            except(AttributeError):
+            except AttributeError:
                 pass
             debounced.t = loop.call_later(wait, call_it)
         return debounced
@@ -50,7 +52,7 @@ class BaseBotApp(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    async def notify(self, event, **data):
+    async def handle(self, event, **data):
         '''
         Handle an event
 
@@ -82,6 +84,7 @@ class TurnMessage:
     async def send(self, text):
         if text != self.last_text:
             await self.delete()
+
             self.last_text = text
             self.message = await self.channel.send(text)
 
@@ -89,9 +92,23 @@ class TurnMessage:
     async def delay(self, text):
         await self.send(text)
 
+    async def cleanup(self):
+        await self.delete()
+        self.abort()
+
     async def delete(self):
         if self.message:
-            await self.message.delete()
+            try:
+                await self.message.delete()
+            except NotFound:
+                pass
+
+    def abort(self):
+        try:
+            self.delay.t.cancel()
+        except AttributeError:
+            print('err')
+            pass
 
 
 def setupLogger():

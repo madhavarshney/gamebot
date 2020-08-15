@@ -1,2 +1,3 @@
-from .g2048 import *
-from .gconnect4 import *
+from .game2048 import *
+from .connect4 import *
+from .tictactoe import *
