@@ -17,10 +17,7 @@ GAME_OVER = '\n:regional_indicator_g: :regional_indicator_a: :regional_indicator
 
 @register(name=GAME_NAME)
 class TicTacToe(BaseBotApp):
-    channel: discord.TextChannel = None
-    board_msg: discord.Message = None
-
-    def __init__(self, players: list):
+    def __init__(self, bot, players: list, channel: discord.TextChannel):
         if len(players) < 2:
             raise GameConfigError("You didn't tell me who to play this game with!")
 
@@ -29,14 +26,16 @@ class TicTacToe(BaseBotApp):
 
         super().__init__(GAME_NAME, players)
 
-        self.board = [[0, 0, 0] for _ in range(3)]
-        self.game_over = False
+        self.bot = bot
+        self.channel = channel
         self.player1 = players[0]
         self.player2 = players[1]
+        self.board = [[None, None, None] for _ in range(3)]
+        self.board_msg = None
         self.current_player = random.choice(players)
 
         self.emojis = {
-            0: ':white_large_square:',
+            None: ':white_large_square:',
             self.player1: ':negative_squared_cross_mark:',
             self.player2: ':blue_circle:'
         }
@@ -44,14 +43,14 @@ class TicTacToe(BaseBotApp):
             self.player1: self.player2,
             self.player2: self.player1
         }
+
         self.selected_row = None
         self.selected_col = None
         self.status_message = ''
+        self.game_over = False
         self.winner = None
 
-    async def begin(self, bot, message: discord.Message):
-        self.bot = bot
-        self.channel: discord.TextChannel = message.channel
+    async def begin(self):
         self.turn_message = TurnMessage(self.channel)
 
         await self.update_message()
@@ -101,7 +100,7 @@ class TicTacToe(BaseBotApp):
     async def play_move(self):
         row, col = self.selected_row, self.selected_col
 
-        if self.board[row][col] == 0:
+        if self.board[row][col] == None:
             self.board[row][col] = self.current_player
             self.current_player = self.other[self.current_player]
         else:
@@ -148,15 +147,25 @@ class TicTacToe(BaseBotApp):
         if not self.winner:
             board_str = f'Selected: ({REVERSE_ROW[self.selected_row]}, {REVERSE_COL[self.selected_col]})\n\n'
 
+        # Used for hitespace between columns
+        SPACER = f' `{Z} {Z}` '
+
+        # Column labels
         board_str += f'`{Z}    {Z}` '
         for col in range(3):
-            board_str += REVERSE_COL[col] + f' `{Z} {Z}` '
+            board_str += REVERSE_COL[col]
+            if col != 2:
+                board_str += SPACER
         board_str += '\n\n'
 
         for row in range(3):
-            board_str += REVERSE_ROW[row] + f' `{Z} {Z}` '
+            # Row label
+            board_str += REVERSE_ROW[row] + SPACER
+            # Row content
             for col in range(3):
-                board_str += self.emojis[self.board[row][col]] + f' `{Z} {Z}` '
+                board_str += self.emojis[self.board[row][col]]
+                if col != 2:
+                    board_str += SPACER
             board_str += '\n\n'
 
         if not self.winner:
@@ -187,24 +196,24 @@ class TicTacToe(BaseBotApp):
         for row_i in range(3):
             row = self.board[row_i]
             if row[0] == row[1] and row[1] == row[2]:
-                if row[0] != 0:
+                if row[0] != None:
                     return row[0]
 
         for col_i in range(3):
             if self.board[0][col_i] == self.board[1][col_i] and self.board[1][col_i] == self.board[2][col_i]:
-                if self.board[0][col_i] != 0:
+                if self.board[0][col_i] != None:
                     return self.board[0][col_i]
 
         if self.board[0][0] == self.board[1][1] and self.board[1][1] == self.board[2][2]:
-            if self.board[0][0] != 0:
+            if self.board[0][0] != None:
                 return self.board[0][0]
 
         if self.board[0][2] == self.board[1][1] and self.board[1][1] == self.board[2][0]:
-            if self.board[0][2] != 0:
+            if self.board[0][2] != None:
                 return self.board[0][0]
 
         for row_i in range(3):
-            if 0 in self.board[row_i]:
+            if None in self.board[row_i]:
                 return None
 
         return 'TIE'
@@ -213,7 +222,7 @@ class TicTacToe(BaseBotApp):
         choices = []
 
         for row, col in itertools.product(range(3), range(3)):
-            if self.board[row][col] == 0:
+            if self.board[row][col] == None:
                 choices.append((row, col))
 
         row, col = random.choice(choices)

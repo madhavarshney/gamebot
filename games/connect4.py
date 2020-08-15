@@ -22,7 +22,7 @@ class GameConnect4(BaseBotApp):
     PRIMARY_COLOR = (255,175,44)
     TERTIARY_COLOR = (84,174,239)
 
-    def __init__(self, players):
+    def __init__(self, bot, players: list, channel: discord.TextChannel):
         if len(players) < 2:
             raise GameConfigError("You didn't tell me who to play this game with!")
 
@@ -30,20 +30,25 @@ class GameConnect4(BaseBotApp):
             raise GameConfigError("That's too many people! This game can only be played with 2 people.")
 
         super().__init__(GAME_NAME, players)
-        self.has_buttons = False
-        self.winner = None
 
+        self.bot = bot
+        self.channel = channel
         self.primary = players[0]
         self.tertiary = players[1]
 
-    async def begin(self, bot, message):
-        self.bot = bot
-        self.channel = message.channel
+        self.has_buttons = False
+        self.winner = None
+
+    async def begin(self):
         self.board = [[None for _ in range(0,7)] for _ in range(0,6)]
-        self.current_player = random.choice([self.primary, self.tertiary]) if self.tertiary != self.bot.user else self.primary
+
+        if self.tertiary != self.bot.user:
+            self.current_player = random.choice([self.primary, self.tertiary])
+        else:
+            self.current_player = self.primary
 
         self.turn_message = TurnMessage(self.channel)
-        self.message = await self.channel.send(f"{self.primary.name} started session between {self.primary.name} and {self.tertiary.name}")
+        self.message = await self.channel.send(f'{self.primary.name} started session between {self.primary.name} and {self.tertiary.name}')
 
         await self.render_message()
         self.register_message(self.message)

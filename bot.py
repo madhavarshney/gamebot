@@ -79,13 +79,13 @@ async def play(ctx: commands.Context, game_name: str = ''):
 
     # Instantiate game
     try:
-        game = game_cls(players)
+        game = game_cls(bot, players, ctx.message.channel)
     except GameConfigError as err:
         return await ctx.send(f"Whoops: {err.message}")
 
     # Woohoo! let's get going
     sessionManager.add(players, game)
-    await game.begin(bot, ctx.message)
+    await game.begin()
 
 
 @bot.command('end', help='End an ongoing game')

@@ -153,15 +153,14 @@ class Board:
 
 
 class SubGame:
-    board_msg: discord.Message = None
-
-    def __init__(self, player):
+    def __init__(self, player, channel):
         self.board = Board()
-        self.game_over = False
         self.player = player
+        self.channel = channel
+        self.board_msg = None
+        self.game_over = False
 
-    async def begin(self, message):
-        self.channel = message.channel
+    async def begin(self):
         self.board.insert_random()
 
         await self.update_message()
@@ -225,20 +224,18 @@ class SubGame:
 
 @register(name=GAME_NAME)
 class Game2048(BaseBotApp):
-    channel: discord.TextChannel = None
-
-    def __init__(self, players: list):
+    def __init__(self, bot, players: list, channel: discord.TextChannel):
         super().__init__(GAME_NAME, players)
 
+        self.channel = channel
         self.games = {}
+
         for player in players:
-            self.games[player.id] = SubGame(player)
+            self.games[player.id] = SubGame(player, channel)
 
-    async def begin(self, bot, message: discord.Message):
-        self.channel: discord.TextChannel = message.channel
-
+    async def begin(self):
         for game in self.games.values():
-            await game.begin(message)
+            await game.begin()
             self.register_message(game.board_msg)
 
     async def end(self):
@@ -272,3 +269,4 @@ class Game2048(BaseBotApp):
                 if game.game_over:
                     # TODO: multiplayer (3+)
                     await self.end()
+                    self.end_session()
