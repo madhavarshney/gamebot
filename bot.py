@@ -35,19 +35,19 @@ async def on_ready():
 async def help(ctx: commands.Context):
     embed = (
         discord.Embed(
-            title='Welcome to Game Bot',
-            url='https://github.com/madhavarshney',
+            title=settings.MAIN_TITLE,
+            url=settings.MAIN_URL,
             description=settings.HELP_DESCRIPTION,
             color=discord.Color.from_rgb(8,146,208)
         )
             .set_author(
-                name='madhavarshney',
-                icon_url=settings.MV_ICON,
-                url='https://github.com/madhavarshney'
+                name=settings.AUTHOR_NAME,
+                icon_url=settings.AUTHOR_ICON,
+                url=settings.AUTHOR_LINK
             )
             .set_thumbnail(url=settings.GAME_IMG)
             .set_footer(
-                text='Have any feedback? Let us know!',
+                text=settings.FOOTER_TEXT,
                 icon_url=settings.BUG_EMOJI
             )
     )
