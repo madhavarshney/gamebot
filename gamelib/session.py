@@ -1,10 +1,12 @@
+from collections import defaultdict
+
 from .database import Database
 
 class SessionManager:
     def __init__(self, db: Database):
         self.db = db
         self._sessions = dict()
-        self._players = dict()
+        self._players = defaultdict(list)
         self._messages = dict()
 
 
@@ -16,7 +18,7 @@ class SessionManager:
         self._sessions[sessionId] = app
 
         for player in players:
-            self._players[player.id] = app
+            self._players[player.id].append(app)
 
         return True
 
@@ -28,7 +30,10 @@ class SessionManager:
 
             if app:
                 for player in set(players):
-                    self._players.pop(player.id)
+                    self._players[player.id].remove(app)
+
+                    if len(self._players[player.id]) == 0:
+                        self._players.pop(player.id)
 
                 return app
 
@@ -53,11 +58,11 @@ class SessionManager:
         self._players = {}
 
 
-    def get_player_session(self, player):
+    def get_player_sessions(self, player):
         try:
             return self._players[player.id]
         except KeyError:
-            return None
+            return []
 
 
     def register_message(self, message, app):

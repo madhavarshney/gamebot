@@ -175,11 +175,16 @@ async def on_reaction_add(reaction: discord.Reaction, user):
     if user == bot.user:
         return
 
-    # Notify app about reaction
-    # app = sessionManager.get_player_session(user)
+    # Find the player's sessions and the message's app
+    sessions = sessionManager.get_player_sessions(user)
     app = sessionManager.get_message_session(reaction.message)
+
+    # Notify app about reaction
     if app:
-        await app.handle('reaction', reaction=reaction, user=user)
+        if sessions and app in sessions:
+            await app.handle('reaction', reaction=reaction, user=user)
+        else:
+            await reaction.remove()
 
 
 if not DISCORD_API_KEY:
