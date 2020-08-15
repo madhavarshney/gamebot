@@ -51,7 +51,7 @@ class SessionManager:
 
 
     async def killall(self):
-        for app in self._sessions.values():
+        for app in list(self._sessions.values()):
             await app.end()
 
         self._sessions = {}

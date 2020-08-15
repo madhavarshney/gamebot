@@ -56,7 +56,9 @@ class GameConnect4(BaseBotApp):
     async def end(self):
         await self.turn_message.cleanup()
         await self.message.clear_reactions()
+
         self.unregister_message(self.message)
+        self.end_session()
 
     async def handle(self, event, **data):
         if event == 'reaction':
@@ -71,7 +73,6 @@ class GameConnect4(BaseBotApp):
 
             if self.is_completed():
                 await self.end()
-                self.end_session()
 
         elif event == 'preference_change':
             await self.render_message()

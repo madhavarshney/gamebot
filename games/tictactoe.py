@@ -71,6 +71,7 @@ class TicTacToe(BaseBotApp):
         await self.update_message()
 
         self.unregister_message(self.board_msg)
+        self.end_session()
 
     async def handle(self, event, **data):
         if event == 'reaction':
@@ -81,21 +82,27 @@ class TicTacToe(BaseBotApp):
             await reaction.remove(user)
 
             if move != None and (user.id == self.current_player.id):
+                if self.status_message:
+                    self.status_message = ''
+                    self.selected_row = None
+                    self.selected_col = None
+
                 if move > 2:
                     self.selected_col = move - 3
                 else:
                     self.selected_row = move
 
-                self.status_message = ''
-
                 if self.selected_row != None and self.selected_col != None:
                     await self.play_move()
 
-                await self.update_message()
-                await self.update_turn_message()
-
                 if not self.winner and self.current_player.id == self.bot.user.id:
                     await self.play_bot_move()
+
+                if self.winner:
+                    await self.end()
+                else:
+                    await self.update_message()
+                    await self.update_turn_message()
 
     async def play_move(self):
         row, col = self.selected_row, self.selected_col
@@ -104,31 +111,18 @@ class TicTacToe(BaseBotApp):
             self.board[row][col] = self.current_player
             self.current_player = self.other[self.current_player]
         else:
-            self.status_message = "That's taken, choose another spot!"
+            self.status_message = ":x: That's taken, choose another spot!"
+            return
 
         self.selected_row = None
         self.selected_col = None
 
-        winner = self.check_winner()
-        if winner:
-            self.winner = winner
-            await self.end()
-            self.end_session()
-            return
+        self.winner = self.check_winner()
 
     async def play_bot_move(self):
         self.bot_move()
         self.current_player = self.other[self.current_player]
-
-        winner = self.check_winner()
-        if winner:
-            self.winner = winner
-            await self.end()
-            self.end_session()
-            return
-
-        await self.update_message()
-        await self.update_turn_message()
+        self.winner = self.check_winner()
 
     async def update_message(self):
         if self.board_msg:
@@ -145,6 +139,9 @@ class TicTacToe(BaseBotApp):
 
         if not self.winner:
             board_str = f'Selected: ({REVERSE_ROW[self.selected_row]}, {REVERSE_COL[self.selected_col]})\n\n'
+
+        if self.status_message:
+            board_str += f'{self.status_message}\n\n'
 
         # Used for hitespace between columns
         SPACER = f' `{Z} {Z}` '
@@ -167,15 +164,21 @@ class TicTacToe(BaseBotApp):
                     board_str += SPACER
             board_str += '\n\n'
 
-        if not self.winner:
-            board_str += f'{self.current_player.mention} {self.status_message}'
-        elif self.winner == 'TIE':
-            board_str += f"It's a tie!\n"
-        else:
-            board_str += f'{self.winner.mention} **has won**!\n'
+        board_str += '\n'
+
+        for player in [self.player1, self.player2]:
+            # [x] @player
+            board_str += f'{self.emojis[player]} {player.mention}'
+            # Check winner
+            if self.winner and self.winner.id == player.id:
+                board_str += ' **has won**!'
+            board_str += '\n\n'
+
+        if self.winner == 'TIE':
+            board_str += f"**It's a tie!**\n\n"
 
         if self.game_over:
-            board_str += f'\n{GAME_OVER}'
+            board_str += f'{GAME_OVER}'
 
         embed = discord.Embed(
             title=f'Tic Tac Toe: {self.player1.name} and {self.player2.name}',

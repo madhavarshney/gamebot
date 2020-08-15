@@ -189,7 +189,7 @@ async def on_reaction_add(reaction: discord.Reaction, user):
         if sessions and app in sessions:
             await app.handle('reaction', reaction=reaction, user=user)
         else:
-            await reaction.remove()
+            await reaction.remove(user)
 
 
 if not DISCORD_API_KEY:

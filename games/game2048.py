@@ -254,6 +254,8 @@ class Game2048(BaseBotApp):
         if winner and len(self.games.values()) > 1:
             await self.channel.send(f'{winner.mention} has won with a score of {score}!')
 
+        self.end_session()
+
     async def handle(self, event, **data):
         if event == 'reaction':
             user = data.get('user')
@@ -269,4 +271,3 @@ class Game2048(BaseBotApp):
                 if game.game_over:
                     # TODO: multiplayer (3+)
                     await self.end()
-                    self.end_session()
