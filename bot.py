@@ -166,7 +166,12 @@ async def set_prefs(ctx: commands.Context, app: str = None, key: str = None, val
 
     # Set the settings
     preferences.set(ctx.author, app, key, value)
-    return await ctx.send(f'{key} = {value}')
+    await ctx.send(f'{key} = {value}')
+
+    # Notify apps
+    sessions = sessionManager.get_player_sessions(ctx.author)
+    for app in sessions:
+        await app.handle('preference_change', user=ctx.author)
 
 
 @bot.event

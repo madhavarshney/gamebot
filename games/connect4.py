@@ -72,6 +72,9 @@ class GameConnect4(BaseBotApp):
             if self.is_completed():
                 self.end_session()
 
+        elif event == 'preference_change':
+            await self.render_message()
+
     def is_completed(self):
         return True if self.winner else False
 
@@ -131,6 +134,7 @@ class GameConnect4(BaseBotApp):
                         break
 
         return ret_val
+
     async def render_message(self):
         if not self.winner:
             header = f"It's your move, {self.current_player.name}"
