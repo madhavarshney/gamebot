@@ -13,8 +13,7 @@ import games
 import settings
 
 PREFIX = 'g!'
-DISCORD_API_KEY = os.environ.get('DISCORD_API_KEY') \
-                  or 'NzEzMjYxMzAwNjQxNDMxNjE0.XsdnvA.Pv14UxDnRbKK1pFcEwoDRbM5zBA'
+DISCORD_API_KEY = os.environ.get('DISCORD_API_KEY')
 
 logger = setupLogger()
 bot = commands.Bot(command_prefix=PREFIX)
