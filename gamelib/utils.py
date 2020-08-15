@@ -96,6 +96,13 @@ class TurnMessage:
         await self.delete()
         self.abort()
 
+    async def edit(self, text):
+        if self.message:
+            try:
+                await self.message.edit(content=text)
+            except NotFound:
+                pass
+
     async def delete(self):
         if self.message:
             try:
